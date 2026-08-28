@@ -8,6 +8,7 @@ export default function OnboardingChat() {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [profileId, setProfileId] = useState(null);
   const messagesEndRef = useRef(null);
   const navigate = useNavigate();
 
@@ -24,21 +25,39 @@ export default function OnboardingChat() {
     if (!input.trim()) return;
 
     const userMsg = { role: 'user', content: input };
-    setMessages(prev => [...prev, userMsg]);
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
     setInput('');
     setIsLoading(true);
 
-    // Mock API call to backend /onboard
-    setTimeout(() => {
-      // In a real app, if the profile is complete, we'd navigate to the roadmap
-      // For the mock, after 2 messages, we'll auto navigate
-      if (messages.length > 3) {
-        navigate('/roadmap');
-      } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: "Got it! How much time can you dedicate per week to learning?" }]);
+    try {
+      const response = await fetch('http://127.0.0.1:8000/onboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          profile_id: profileId
+        })
+      });
+      const data = await response.json();
+      
+      setMessages(prev => [...prev, data.message]);
+      if (data.profile && data.profile.id) {
+        setProfileId(data.profile.id);
+        localStorage.setItem('learner_id', data.profile.id);
       }
+
+      if (data.is_complete) {
+        setTimeout(() => {
+          navigate('/roadmap');
+        }, 1500);
+      }
+    } catch (error) {
+      console.error(error);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I had trouble connecting to the server." }]);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   return (
