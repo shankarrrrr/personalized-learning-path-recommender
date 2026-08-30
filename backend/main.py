@@ -6,11 +6,15 @@ import models, schemas, database
 from services.ai_service import ai_service
 from services.graph_service import graph_service
 from services.recommendation_service import recommendation_service
+from error_handlers import register_exception_handlers, AIUnavailableError
 from typing import List, Optional
 
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="AI Learning Path Recommender")
+
+# Register normalized exception handlers so the API never returns raw tracebacks.
+register_exception_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,11 +35,130 @@ def get_db():
 def read_root():
     return {"message": "AI Learning Path API is running"}
 
+
+@app.get("/health")
+def health_check(db: Session = Depends(get_db)):
+    """Return service health and dependency status for monitoring/load balancers."""
+    status = {"status": "ok", "ai_service": "unconfigured", "db": "down", "courses": 0}
+    try:
+        status["courses"] = db.query(models.Course).count()
+        status["db"] = "ok" if status["courses"] is not None else "down"
+    except Exception as e:
+        status["db"] = "error"
+        status["db_error"] = str(e)
+    status["ai_service"] = "configured" if ai_service.client else "unconfigured"
+    return status
+
+
+@app.get("/analytics/progress/{learner_id}")
+def get_progress_analytics(learner_id: int, db: Session = Depends(get_db)):
+    """Return aggregated learning progress analytics for the dashboard.
+
+    Computes:
+    - skill_radar: percentage mastery of the top skills on the learner's path.
+    - milestones: progress % per milestone bucket (Beginner / Intermediate / Advanced).
+    - next_action: the current skill the learner should work on plus the next one.
+    - summary: totals (total, completed, current, locked).
+    """
+    profile = db.query(models.LearnerProfile).filter(models.LearnerProfile.id == learner_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    path = (
+        db.query(models.LearningPath)
+        .filter(models.LearningPath.learner_id == learner_id)
+        .order_by(models.LearningPath.id.desc())
+        .first()
+    )
+
+    if not path or not path.ordered_nodes:
+        return {
+            "skill_radar": [],
+            "milestones": [],
+            "next_action": None,
+            "summary": {"total": 0, "completed": 0, "current": 0, "locked": 0},
+        }
+
+    nodes = path.ordered_nodes
+    known = set(profile.known_skills or [])
+
+    # Skill radar: for each skill on the path, mastery = 100 if known/completed else 0.
+    skill_radar = []
+    for n in nodes:
+        skill = n.get("skill_id", "")
+        mastered = 100 if (skill in known or n.get("status") == "completed") else 0
+        label = skill.replace("_", " ").title()
+        skill_radar.append({"subject": label, "A": mastered, "fullMark": 100})
+
+    # Milestone buckets by course level when available.
+    level_buckets = {"Beginner": [], "Intermediate": [], "Advanced": []}
+    for n in nodes:
+        course = db.query(models.Course).filter(models.Course.id == n.get("course_id")).first()
+        level = (course.level if course else "Beginner") or "Beginner"
+        if level not in level_buckets:
+            level_buckets[level] = []
+        status = n.get("status", "locked")
+        level_buckets[level].append(status)
+
+    milestones = []
+    for name in ["Beginner", "Intermediate", "Advanced"]:
+        statuses = level_buckets.get(name, [])
+        if not statuses:
+            continue
+        done = sum(1 for s in statuses if s in ("completed", "skipped"))
+        progress = int((done / len(statuses)) * 100) if statuses else 0
+        milestones.append({"name": name, "progress": progress})
+
+    # Next action: the first node whose status is 'current'.
+    next_action = None
+    for i, n in enumerate(nodes):
+        if n.get("status") == "current":
+            nxt = nodes[i + 1].get("skill_id", "") if i + 1 < len(nodes) else None
+            next_action = {
+                "skill": n.get("skill_id", "").replace("_", " ").title(),
+                "next": nxt.replace("_", " ").title() if nxt else None,
+            }
+            break
+
+    summary = {
+        "total": len(nodes),
+        "completed": sum(1 for n in nodes if n.get("status") == "completed"),
+        "current": sum(1 for n in nodes if n.get("status") == "current"),
+        "locked": sum(1 for n in nodes if n.get("status") == "locked"),
+    }
+
+    return {
+        "skill_radar": skill_radar,
+        "milestones": milestones,
+        "next_action": next_action,
+        "summary": summary,
+    }
+
 @app.post("/onboard", response_model=schemas.OnboardResponse)
 def onboard(request: schemas.OnboardRequest, db: Session = Depends(get_db)):
     history = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-    result = ai_service.extract_profile(history)
-    
+    # AI extraction is wrapped so a Gemini outage degrades gracefully instead of
+    # surfacing a 500. We fall back to a helpful assistant message + a partial
+    # profile so the conversation can still continue.
+    try:
+        result = ai_service.extract_profile(history)
+    except Exception as e:
+        print(f"[onboard] AI service failed, using fallback: {e!r}")
+        result = {
+            "message": {
+                "role": "assistant",
+                "content": (
+                    "I'm having a little trouble reaching the AI service right now, "
+                    "but I've saved what you've shared. Could you tell me a bit more "
+                    "about your goal, current experience level, and how much time you "
+                    "can dedicate to learning each week?"
+                ),
+            },
+            "profile": {},
+            "career_suggestions": [],
+            "is_complete": False,
+        }
+
     profile_data = result.get("profile", {})
     
     if request.profile_id:
@@ -255,6 +378,34 @@ def get_career_by_id(career_id: str, db: Session = Depends(get_db)):
     if career is None:
         raise HTTPException(status_code=404, detail="Career path not found")
     return career
+
+
+@app.get("/courses/{course_id}")
+def get_course_by_id(course_id: str, db: Session = Depends(get_db)):
+    """Get a specific course by ID, including real-course metadata."""
+    course = db.query(models.Course).filter(models.Course.id == course_id).first()
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    # Serialize including the new metadata fields.
+    return {
+        "id": course.id,
+        "title": course.title,
+        "description": course.description,
+        "domain": course.domain,
+        "skills_taught": course.skills_taught or [],
+        "prerequisites": course.prerequisites or [],
+        "level": course.level,
+        "format": course.format,
+        "duration": course.duration,
+        "platform": course.platform,
+        "course_url": course.course_url,
+        "instructor": course.instructor,
+        "rating": course.rating,
+        "rating_count": course.rating_count,
+        "price": course.price,
+        "is_free": course.is_free,
+        "language": course.language,
+    }
 
 @app.get("/careers/domains/list")
 def get_career_domains(db: Session = Depends(get_db)):
