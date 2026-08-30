@@ -18,6 +18,7 @@ import {
 import { api, describeError } from '../lib/api';
 import { useToast } from './Toast';
 import { useNavigate } from 'react-router-dom';
+import { CareerGridSkeleton } from './Skeletons';
 
 const CareerExplorer = ({ onCareerSelect, selectedCareer }) => {
   const [careers, setCareers] = useState([]);
@@ -171,9 +172,12 @@ const CareerExplorer = ({ onCareerSelect, selectedCareer }) => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-64">
-        <Loader2 className="animate-spin h-8 w-8 text-primary" />
-        <span className="ml-3 text-muted-foreground">Loading career paths...</span>
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">Explore Tech Career Paths</h1>
+          <p className="text-lg text-gray-600">Loading career paths...</p>
+        </div>
+        <CareerGridSkeleton count={6} />
       </div>
     );
   }

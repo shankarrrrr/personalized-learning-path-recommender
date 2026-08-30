@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Target, Trophy, Clock, Loader2 } from 'lucide-react';
+import { Target, Trophy, Clock, Loader2, Users } from 'lucide-react';
 import { api, describeError } from '../lib/api';
 import { useToast } from './Toast';
+import CourseCard from './CourseCard';
 
 const DEFAULT_SKILL_DATA = [
   { subject: 'Python', A: 0, fullMark: 100 },
@@ -18,6 +19,7 @@ export default function Dashboard() {
   const [skillData, setSkillData] = useState(DEFAULT_SKILL_DATA);
   const [milestoneData, setMilestoneData] = useState([]);
   const [nextAction, setNextAction] = useState(null);
+  const [peerRecs, setPeerRecs] = useState([]);
   const toast = useToast();
 
   useEffect(() => {
@@ -31,10 +33,14 @@ export default function Dashboard() {
 
     (async () => {
       try {
-        const data = await api.get(`/analytics/progress/${learnerId}`);
+        const [data, peerData] = await Promise.all([
+          api.get(`/analytics/progress/${learnerId}`),
+          api.get(`/recommendations/people-like-you/${learnerId}?limit=3`).catch(() => ({ recommendations: [] })),
+        ]);
         setSkillData(data.skill_radar || DEFAULT_SKILL_DATA);
         setMilestoneData(data.milestones || []);
         setNextAction(data.next_action || null);
+        setPeerRecs(peerData.recommendations || []);
       } catch (err) {
         const msg = describeError(err);
         setError(msg);
@@ -140,6 +146,21 @@ export default function Dashboard() {
         </div>
 
       </div>
+
+      {/* People like you also studied */}
+      {peerRecs.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center mb-4">
+            <Users className="w-5 h-5 text-primary mr-2" />
+            <h3 className="font-semibold text-lg">Learners like you also studied</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {peerRecs.map((c) => (
+              <CourseCard key={c.id} course={c} compact />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

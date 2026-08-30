@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Lock, CheckCircle2, CircleDashed, PlayCircle, MessageCircle, X, Loader2, ExternalLink, Clock, DollarSign } from 'lucide-react';
 import { api, describeError } from '../lib/api';
 import { useToast } from './Toast';
+import { RoadmapSkeleton } from './Skeletons';
 
 export default function RoadmapView() {
   const [nodes, setNodes] = useState([]);
@@ -90,9 +91,14 @@ export default function RoadmapView() {
 
   if (isLoading) {
     return (
-      <div className="text-center p-12 text-muted-foreground flex flex-col items-center gap-3">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        <span>Generating your personalized roadmap...</span>
+      <div className="flex flex-col md:flex-row gap-6 relative">
+        <div className="flex-1 max-w-3xl">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-foreground">Your Learning Roadmap</h2>
+            <p className="text-muted-foreground">Generating your personalized path...</p>
+          </div>
+          <RoadmapSkeleton count={5} />
+        </div>
       </div>
     );
   }
