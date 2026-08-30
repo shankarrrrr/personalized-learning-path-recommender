@@ -2,6 +2,7 @@ import os
 from sqlalchemy.orm import Session
 import database, models
 from services.embedding_service import embedding_service
+from data.career_paths import CAREER_PATHS_DATA
 
 def run_seed():
     # Drop and recreate tables to ensure fresh start with embeddings
@@ -79,7 +80,18 @@ def run_seed():
 
     db.commit()
     print(f"Successfully seeded {len(courses_data)} courses with Gemini embeddings.")
+    
+    # Seed career paths
+    print("Seeding career paths...")
+    for career_data in CAREER_PATHS_DATA:
+        career = models.CareerPath(**career_data)
+        db.add(career)
+    
+    db.commit()
+    print(f"Successfully seeded {len(CAREER_PATHS_DATA)} career paths.")
+    
     db.close()
+    print(f"Database seeding complete: {len(courses_data)} courses + {len(CAREER_PATHS_DATA)} career paths")
 
 if __name__ == "__main__":
     run_seed()
