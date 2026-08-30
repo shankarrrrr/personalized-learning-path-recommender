@@ -40,7 +40,8 @@ class EmbeddingService:
         self._query_cache = {}
         # Track request timestamps to self-throttle to the configured RPM.
         self._request_times: list[float] = []
-
+        # Cached list of Course ORM objects (avoids repeated DB round-trips).
+        self._cached_courses = None
     def _throttle(self) -> None:
         """Sleep if necessary to stay within the configured requests-per-minute limit."""
         if self.rpm_limit <= 0:
@@ -99,6 +100,9 @@ class EmbeddingService:
         # Local import to avoid circular dependency
         import models
         courses = db_session.query(models.Course).all()
+        # Cache the raw course objects so downstream services (recommendation)
+        # don't re-query the DB on every skill lookup within a single path gen.
+        self._cached_courses = courses
         count = 0
         for course in courses:
             if course.embedding_vector:
@@ -107,5 +111,11 @@ class EmbeddingService:
                 count += 1
         self.is_initialized = True
         print(f"Loaded {count} course vectors into memory.")
+
+    def get_cached_courses(self, db_session):
+        """Return the cached course list, rebuilding the index if needed."""
+        if not self.is_initialized or not self._cached_courses:
+            self.build_course_index(db_session)
+        return self._cached_courses
 
 embedding_service = EmbeddingService()

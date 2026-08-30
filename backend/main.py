@@ -7,6 +7,7 @@ from services.ai_service import ai_service
 from services.graph_service import graph_service
 from services.recommendation_service import recommendation_service
 from services.recommendation_engine import recommendation_engine
+from services.cache import response_cache
 from error_handlers import register_exception_handlers, AIUnavailableError
 from typing import List, Optional
 
@@ -368,27 +369,35 @@ def get_careers(
             query = query.filter(models.CareerPath.remote_friendly.in_(["Yes", "Partial"]))
         else:
             query = query.filter(models.CareerPath.remote_friendly == "No")
-    
+
     careers = query.all()
     return careers
 
 @app.get("/careers/{career_id}", response_model=schemas.CareerPath)
 def get_career_by_id(career_id: str, db: Session = Depends(get_db)):
-    """Get a specific career path by ID."""
+    """Get a specific career path by ID (cached, careers rarely change)."""
+    cache_key = f"career:{career_id}"
+    cached = response_cache.get(cache_key)
+    if cached is not None:
+        return cached
     career = db.query(models.CareerPath).filter(models.CareerPath.id == career_id).first()
     if career is None:
         raise HTTPException(status_code=404, detail="Career path not found")
+    response_cache.set(cache_key, career, ttl=600)
     return career
 
 
 @app.get("/courses/{course_id}")
 def get_course_by_id(course_id: str, db: Session = Depends(get_db)):
-    """Get a specific course by ID, including real-course metadata."""
+    """Get a specific course by ID, including real-course metadata (cached)."""
+    cache_key = f"course:{course_id}"
+    cached = response_cache.get(cache_key)
+    if cached is not None:
+        return cached
     course = db.query(models.Course).filter(models.Course.id == course_id).first()
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found")
-    # Serialize including the new metadata fields.
-    return {
+    payload = {
         "id": course.id,
         "title": course.title,
         "description": course.description,
@@ -407,6 +416,8 @@ def get_course_by_id(course_id: str, db: Session = Depends(get_db)):
         "is_free": course.is_free,
         "language": course.language,
     }
+    response_cache.set(cache_key, payload, ttl=600)
+    return payload
 
 @app.get("/careers/domains/list")
 def get_career_domains(db: Session = Depends(get_db)):
@@ -416,17 +427,25 @@ def get_career_domains(db: Session = Depends(get_db)):
 
 @app.get("/careers/stats/summary")
 def get_career_stats(db: Session = Depends(get_db)):
-    """Get summary statistics about available career paths."""
+    """Get summary statistics about available career paths (cached, 10min TTL)."""
+    return response_cache.get_or_compute(
+        "career_stats",
+        lambda: _compute_career_stats(db),
+        ttl=600,
+    )
+
+
+def _compute_career_stats(db: Session) -> dict:
     careers = db.query(models.CareerPath).all()
-    
+
     if not careers:
         return {"message": "No career paths found"}
-    
+
     salaries = [(c.avg_salary_min, c.avg_salary_max) for c in careers if c.avg_salary_min and c.avg_salary_max]
     times = [c.estimated_time_months for c in careers if c.estimated_time_months]
     domains = list(set([c.domain for c in careers]))
     difficulty_levels = list(set([c.difficulty_level for c in careers]))
-    
+
     return {
         "total_career_paths": len(careers),
         "domains": domains,

@@ -24,10 +24,10 @@ class Course(Base):
     id = Column(String, primary_key=True, index=True) # string IDs from seed data
     title = Column(String, index=True)
     description = Column(Text)
-    domain = Column(String)
+    domain = Column(String, index=True)  # indexed for domain filtering
     skills_taught = Column(JSON, default=list)
     prerequisites = Column(JSON, default=list)
-    level = Column(String)
+    level = Column(String, index=True)  # indexed for level filtering
     format = Column(String)
     duration = Column(String)
     embedding_vector = Column(JSON, nullable=True) # Will store list of floats if used locally
