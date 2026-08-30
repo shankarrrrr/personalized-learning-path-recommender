@@ -1,0 +1,74 @@
+name: CI
+
+# Runs on every pull request and push to main/feature branches.
+# Lints + tests both backend and frontend, and builds the frontend bundle
+# to catch compile-time regressions early.
+
+on:
+  push:
+    branches: [main, feature/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (lint + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      GEMINI_API_KEY: ci-placeholder-key-not-used
+      JWT_SECRET_KEY: ci-test-secret
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint (ruff if available, else compile-all)
+        run: |
+          python -W error -c "import ast, sys, glob; [ast.parse(open(f).read(), filename=f) for f in glob.glob('**/*.py', recursive=True)]; print('Syntax OK')"
+
+      - name: Run backend tests
+        run: python -m pytest -v --tb=short
+
+  frontend:
+    name: Frontend (lint + test + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true # oxlint warnings shouldn't fail the gate yet
+
+      - name: Run frontend tests
+        run: npm run test
+
+      - name: Build frontend
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: http://localhost:8000

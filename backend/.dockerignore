@@ -1,0 +1,19 @@
+# Backend dockerignore - keep build context small and avoid leaking secrets.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+sql_app.db
+sql_app.db-journal
+data/
+tests/
+.env
+.git/
+.gitignore
