@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, Star, ArrowRight, Clock, DollarSign } from 'lucide-react';
 
 export default function OnboardingChat() {
   const [messages, setMessages] = useState([
@@ -9,6 +9,8 @@ export default function OnboardingChat() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [profileId, setProfileId] = useState(null);
+  const [careerSuggestions, setCareerSuggestions] = useState([]);
+  const [showCareerSuggestions, setShowCareerSuggestions] = useState(false);
   const messagesEndRef = useRef(null);
   const navigate = useNavigate();
 
@@ -19,6 +21,78 @@ export default function OnboardingChat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const handleCareerSelect = async (career) => {
+    try {
+      const userMsg = { role: 'user', content: `I'm interested in becoming a ${career.title}. This sounds like a great fit for me!` };
+      const newMessages = [...messages, userMsg];
+      setMessages(newMessages);
+      setInput('');
+      setShowCareerSuggestions(false);
+      setIsLoading(true);
+
+      const response = await fetch('http://127.0.0.1:8000/onboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          profile_id: profileId
+        })
+      });
+      const data = await response.json();
+      
+      setMessages(prev => [...prev, data.message]);
+      
+      if (data.is_complete) {
+        setTimeout(() => {
+          navigate('/roadmap');
+        }, 1500);
+      }
+    } catch (error) {
+      console.error(error);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I had trouble connecting to the server." }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCareerSelect = async (career) => {
+    try {
+      const userMsg = { role: 'user', content: `I'm interested in becoming a ${career.title}. This sounds like a great fit for me!` };
+      const newMessages = [...messages, userMsg];
+      setMessages(newMessages);
+      setInput('');
+      setShowCareerSuggestions(false);
+      setIsLoading(true);
+
+      const response = await fetch('http://127.0.0.1:8000/onboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          profile_id: profileId
+        })
+      });
+      const data = await response.json();
+      
+      setMessages(prev => [...prev, data.message]);
+      
+      if (data.is_complete) {
+        setTimeout(() => {
+          navigate('/roadmap');
+        }, 1500);
+      }
+    } catch (error) {
+      console.error(error);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I had trouble connecting to the server." }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExploreAllCareers = () => {
+    navigate('/careers');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -45,6 +119,15 @@ export default function OnboardingChat() {
       if (data.profile && data.profile.id) {
         setProfileId(data.profile.id);
         localStorage.setItem('learner_id', data.profile.id);
+      }
+
+      // Handle career suggestions
+      if (data.career_suggestions && data.career_suggestions.length > 0) {
+        setCareerSuggestions(data.career_suggestions);
+        setShowCareerSuggestions(true);
+      } else {
+        setCareerSuggestions([]);
+        setShowCareerSuggestions(false);
       }
 
       if (data.is_complete) {
@@ -88,6 +171,49 @@ export default function OnboardingChat() {
             </div>
           </div>
         )}
+
+        {/* Career Suggestions */}
+        {showCareerSuggestions && careerSuggestions.length > 0 && (
+          <div className="flex justify-start">
+            <div className="max-w-[90%] bg-blue-50 border border-blue-200 rounded-2xl p-4 rounded-bl-none">
+              <div className="mb-3">
+                <h4 className="font-semibold text-blue-900 mb-1">🎯 Career Path Suggestions</h4>
+                <p className="text-sm text-blue-700">Based on your interests, here are some careers that might be perfect for you:</p>
+              </div>
+              
+              <div className="space-y-3">
+                {careerSuggestions.map((suggestion, idx) => (
+                  <div 
+                    key={idx}
+                    className="bg-white border border-blue-200 rounded-lg p-3 cursor-pointer hover:bg-blue-50 transition-colors"
+                    onClick={() => handleCareerSelect(suggestion)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="font-medium text-blue-900">{suggestion.title}</h5>
+                      <Star className="h-4 w-4 text-yellow-500 fill-current" />
+                    </div>
+                    <p className="text-sm text-blue-700 mb-2">{suggestion.reason}</p>
+                    <div className="flex items-center justify-between text-xs text-blue-600">
+                      <span>Click to select this path</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="mt-4 pt-3 border-t border-blue-200">
+                <button
+                  onClick={handleExploreAllCareers}
+                  className="w-full text-center text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center justify-center space-x-1"
+                >
+                  <span>Explore all {careerSuggestions.length > 0 ? '11' : ''} career paths</span>
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -109,12 +235,18 @@ export default function OnboardingChat() {
             {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
           </button>
         </form>
-        <div className="mt-2 text-center">
+        <div className="mt-2 text-center space-x-4">
           <button 
             onClick={() => navigate('/roadmap')}
             className="text-xs text-muted-foreground hover:text-primary transition-colors underline"
           >
             Skip for now, use defaults
+          </button>
+          <button 
+            onClick={handleExploreAllCareers}
+            className="text-xs text-blue-600 hover:text-blue-800 transition-colors underline"
+          >
+            Browse all career paths
           </button>
         </div>
       </div>

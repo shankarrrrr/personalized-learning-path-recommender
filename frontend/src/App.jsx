@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
-import { MessageCircle, Map, LayoutDashboard } from 'lucide-react';
+import { MessageCircle, Map, LayoutDashboard, Compass } from 'lucide-react';
 import OnboardingChat from './components/OnboardingChat';
 import RoadmapView from './components/RoadmapView';
 import Dashboard from './components/Dashboard';
+import CareerExplorer from './components/CareerExplorer';
 
 function App() {
   return (
@@ -16,6 +17,10 @@ function App() {
               <Link to="/" className="flex items-center text-muted-foreground hover:text-primary transition-colors">
                 <MessageCircle className="w-5 h-5 mr-1" />
                 <span className="hidden sm:inline">Chat</span>
+              </Link>
+              <Link to="/careers" className="flex items-center text-muted-foreground hover:text-primary transition-colors">
+                <Compass className="w-5 h-5 mr-1" />
+                <span className="hidden sm:inline">Careers</span>
               </Link>
               <Link to="/roadmap" className="flex items-center text-muted-foreground hover:text-primary transition-colors">
                 <Map className="w-5 h-5 mr-1" />
@@ -32,6 +37,7 @@ function App() {
         <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-8">
           <Routes>
             <Route path="/" element={<OnboardingChat />} />
+            <Route path="/careers" element={<CareerExplorer />} />
             <Route path="/roadmap" element={<RoadmapView />} />
             <Route path="/dashboard" element={<Dashboard />} />
           </Routes>
