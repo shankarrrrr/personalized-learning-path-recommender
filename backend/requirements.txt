@@ -14,6 +14,13 @@ google-genai==1.53.0
 numpy==1.26.4
 networkx==3.5
 
+# Authentication (TASK-012)
+passlib==1.7.4
+bcrypt==4.1.2
+python-jose==3.5.0
+python-multipart==0.0.20
+email-validator==2.1.0
+
 # Testing (dev only, but pinned for reproducible CI)
 pytest==9.0.1
 pytest-asyncio==1.3.0

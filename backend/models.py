@@ -7,6 +7,7 @@ class LearnerProfile(Base):
     __tablename__ = "learner_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)  # owner when authenticated
     goal = Column(String, nullable=True)
     domain = Column(String, nullable=True)
     current_level = Column(String, nullable=True)
@@ -15,8 +16,27 @@ class LearnerProfile(Base):
     time_budget = Column(String, nullable=True)
     preferred_format = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    
+
     learning_paths = relationship("LearningPath", back_populates="learner")
+    user = relationship("User", back_populates="learner_profiles")
+
+
+class User(Base):
+    """Application user for authentication (TASK-012).
+
+    A User owns one or more LearnerProfiles. Authenticated requests carry a
+    JWT; the current user is resolved to scope endpoints to their own data.
+    """
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    learner_profiles = relationship("LearnerProfile", back_populates="user")
 
 class Course(Base):
     __tablename__ = "courses"

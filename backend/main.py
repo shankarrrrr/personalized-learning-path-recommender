@@ -8,6 +8,8 @@ from services.graph_service import graph_service
 from services.recommendation_service import recommendation_service
 from services.recommendation_engine import recommendation_engine
 from services.cache import response_cache
+from services.auth_service import hash_password, verify_password, create_access_token
+from auth_deps import get_current_user, get_current_user_optional
 from error_handlers import register_exception_handlers, AIUnavailableError
 from typing import List, Optional
 
@@ -50,6 +52,50 @@ def health_check(db: Session = Depends(get_db)):
         status["db_error"] = str(e)
     status["ai_service"] = "configured" if ai_service.client else "unconfigured"
     return status
+
+
+# ============================================================================
+# Authentication (TASK-012)
+# ============================================================================
+
+@app.post("/auth/register", response_model=schemas.TokenResponse)
+def register(payload: schemas.UserCreate, db: Session = Depends(get_db)):
+    """Register a new user and return a JWT."""
+    existing = (
+        db.query(models.User)
+        .filter((models.User.email == payload.email) | (models.User.username == payload.username))
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="A user with that email or username already exists")
+    user = models.User(
+        email=payload.email,
+        username=payload.username,
+        hashed_password=hash_password(payload.password),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    token = create_access_token({"sub": str(user.id)})
+    return {"access_token": token, "token_type": "bearer", "user": user}
+
+
+@app.post("/auth/login", response_model=schemas.TokenResponse)
+def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
+    """Authenticate a user and return a JWT."""
+    user = db.query(models.User).filter(models.User.email == payload.email).first()
+    if not user or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is disabled")
+    token = create_access_token({"sub": str(user.id)})
+    return {"access_token": token, "token_type": "bearer", "user": user}
+
+
+@app.get("/auth/me", response_model=schemas.UserResponse)
+def get_me(current_user: models.User = Depends(get_current_user)):
+    """Return the currently authenticated user."""
+    return current_user
 
 
 @app.get("/analytics/progress/{learner_id}")
@@ -137,7 +183,11 @@ def get_progress_analytics(learner_id: int, db: Session = Depends(get_db)):
     }
 
 @app.post("/onboard", response_model=schemas.OnboardResponse)
-def onboard(request: schemas.OnboardRequest, db: Session = Depends(get_db)):
+def onboard(
+    request: schemas.OnboardRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_optional),
+):
     history = [{"role": msg.role, "content": msg.content} for msg in request.messages]
     # AI extraction is wrapped so a Gemini outage degrades gracefully instead of
     # surfacing a 500. We fall back to a helpful assistant message + a partial
@@ -162,6 +212,9 @@ def onboard(request: schemas.OnboardRequest, db: Session = Depends(get_db)):
         }
 
     profile_data = result.get("profile", {})
+    # Attach the profile to the authenticated user when one is present.
+    if current_user:
+        profile_data = {**profile_data, "user_id": current_user.id}
     
     if request.profile_id:
         profile = db.query(models.LearnerProfile).filter(models.LearnerProfile.id == request.profile_id).first()
