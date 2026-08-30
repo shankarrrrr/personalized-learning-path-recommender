@@ -6,6 +6,7 @@ import models, schemas, database
 from services.ai_service import ai_service
 from services.graph_service import graph_service
 from services.recommendation_service import recommendation_service
+from services.recommendation_engine import recommendation_engine
 from error_handlers import register_exception_handlers, AIUnavailableError
 from typing import List, Optional
 
@@ -532,3 +533,59 @@ def select_career_path(career_id: str, learner_id: int, db: Session = Depends(ge
         "generated_learning_path": generated_path,
         "skills_to_learn": len(career.required_skills) - len(set(profile.known_skills or []) & set(career.required_skills))
     }
+
+
+# ============================================================================
+# Smart recommendations engine (TASK-009)
+# ============================================================================
+
+@app.get("/recommendations/time-to-goal/{learner_id}")
+def get_time_to_goal(learner_id: int, db: Session = Depends(get_db)):
+    """Estimate how long it will take the learner to reach their goal."""
+    profile = db.query(models.LearnerProfile).filter(models.LearnerProfile.id == learner_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return recommendation_engine.estimate_time_to_goal(profile, db)
+
+
+@app.get("/recommendations/career-difficulty/{career_id}")
+def get_career_difficulty(career_id: str, learner_id: int, db: Session = Depends(get_db)):
+    """Assess how difficult a career will be for the given learner."""
+    career = db.query(models.CareerPath).filter(models.CareerPath.id == career_id).first()
+    if not career:
+        raise HTTPException(status_code=404, detail="Career path not found")
+    profile = db.query(models.LearnerProfile).filter(models.LearnerProfile.id == learner_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Learner profile not found")
+    return recommendation_engine.assess_career_difficulty(career, profile)
+
+
+@app.get("/recommendations/people-like-you/{learner_id}")
+def get_people_like_you(learner_id: int, db: Session = Depends(get_db), limit: int = 5):
+    """Suggest courses studied by learners with overlapping interests/goal."""
+    profile = db.query(models.LearnerProfile).filter(models.LearnerProfile.id == learner_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return {"recommendations": recommendation_engine.people_like_you_studied(profile, db, limit=limit)}
+
+
+@app.get("/recommendations/alternatives/{skill_id}")
+def get_alternative_courses(skill_id: str, learner_id: int, db: Session = Depends(get_db)):
+    """Return alternative courses for a skill (used in the skip flow)."""
+    profile = db.query(models.LearnerProfile).filter(models.LearnerProfile.id == learner_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return {"alternatives": recommendation_engine.alternative_courses(skill_id, profile, db)}
+
+
+@app.get("/recommendations/explain")
+def explain_course(course_title: str, goal: str, learner_id: int, db: Session = Depends(get_db)):
+    """Generate a one-line AI rationale for why a course was recommended."""
+    profile = db.query(models.LearnerProfile).filter(models.LearnerProfile.id == learner_id).first()
+    user_goal = goal or (profile.goal if profile else "your career goal")
+    try:
+        explanation = recommendation_engine.explain_course(course_title, user_goal)
+    except Exception as e:
+        print(f"[explain] AI failed, using fallback: {e!r}")
+        explanation = f"Recommended because it builds the foundation for your goal to {user_goal}."
+    return {"explanation": explanation}
