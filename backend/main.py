@@ -57,6 +57,7 @@ def onboard(request: schemas.OnboardRequest, db: Session = Depends(get_db)):
     return {
         "message": result.get("message", {"role": "assistant", "content": "Tell me more!"}),
         "profile": profile,
+        "career_suggestions": result.get("career_suggestions", result.get("suggested_careers", [])),
         "is_complete": result.get("is_complete", False)
     }
 

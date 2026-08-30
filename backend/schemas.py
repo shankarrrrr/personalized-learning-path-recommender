@@ -32,6 +32,7 @@ class OnboardRequest(BaseModel):
 class OnboardResponse(BaseModel):
     message: ChatMessage
     profile: LearnerProfile
+    career_suggestions: Optional[List[Dict[str, Any]]] = []
     is_complete: bool
 
 class PathGenerateRequest(BaseModel):
