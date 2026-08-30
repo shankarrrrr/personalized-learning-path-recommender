@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Send, Loader2, Star, ArrowRight, Clock, DollarSign } from 'lucide-react';
+import { api, ApiError, describeError } from '../lib/api';
+import { useToast } from './Toast';
 
 export default function OnboardingChat() {
   const [messages, setMessages] = useState([
@@ -8,11 +10,14 @@ export default function OnboardingChat() {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [profileId, setProfileId] = useState(null);
+  const [profileId, setProfileId] = useState(() => {
+    try { return localStorage.getItem('learner_id') || null; } catch { return null; }
+  });
   const [careerSuggestions, setCareerSuggestions] = useState([]);
   const [showCareerSuggestions, setShowCareerSuggestions] = useState(false);
   const messagesEndRef = useRef(null);
   const navigate = useNavigate();
+  const toast = useToast();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -23,68 +28,30 @@ export default function OnboardingChat() {
   }, [messages]);
 
   const handleCareerSelect = async (career) => {
+    const userMsg = { role: 'user', content: `I'm interested in becoming a ${career.title}. This sounds like a great fit for me!` };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput('');
+    setShowCareerSuggestions(false);
+    setIsLoading(true);
+
     try {
-      const userMsg = { role: 'user', content: `I'm interested in becoming a ${career.title}. This sounds like a great fit for me!` };
-      const newMessages = [...messages, userMsg];
-      setMessages(newMessages);
-      setInput('');
-      setShowCareerSuggestions(false);
-      setIsLoading(true);
-
-      const response = await fetch('http://127.0.0.1:8000/onboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newMessages,
-          profile_id: profileId
-        })
+      const data = await api.post('/onboard', {
+        messages: newMessages,
+        profile_id: profileId ? Number(profileId) : null,
       });
-      const data = await response.json();
-      
       setMessages(prev => [...prev, data.message]);
-      
-      if (data.is_complete) {
-        setTimeout(() => {
-          navigate('/roadmap');
-        }, 1500);
+      if (data.profile && data.profile.id) {
+        setProfileId(data.profile.id);
+        try { localStorage.setItem('learner_id', data.profile.id); } catch {}
       }
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I had trouble connecting to the server." }]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCareerSelect = async (career) => {
-    try {
-      const userMsg = { role: 'user', content: `I'm interested in becoming a ${career.title}. This sounds like a great fit for me!` };
-      const newMessages = [...messages, userMsg];
-      setMessages(newMessages);
-      setInput('');
-      setShowCareerSuggestions(false);
-      setIsLoading(true);
-
-      const response = await fetch('http://127.0.0.1:8000/onboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newMessages,
-          profile_id: profileId
-        })
-      });
-      const data = await response.json();
-      
-      setMessages(prev => [...prev, data.message]);
-      
       if (data.is_complete) {
-        setTimeout(() => {
-          navigate('/roadmap');
-        }, 1500);
+        setTimeout(() => navigate('/roadmap'), 1500);
       }
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I had trouble connecting to the server." }]);
+    } catch (err) {
+      const msg = describeError(err);
+      toast.error(msg);
+      setMessages(prev => [...prev, { role: 'assistant', content: `Sorry, I ran into an issue: ${msg}` }]);
     } finally {
       setIsLoading(false);
     }
@@ -105,20 +72,14 @@ export default function OnboardingChat() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/onboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newMessages,
-          profile_id: profileId
-        })
+      const data = await api.post('/onboard', {
+        messages: newMessages,
+        profile_id: profileId ? Number(profileId) : null,
       });
-      const data = await response.json();
-      
       setMessages(prev => [...prev, data.message]);
       if (data.profile && data.profile.id) {
         setProfileId(data.profile.id);
-        localStorage.setItem('learner_id', data.profile.id);
+        try { localStorage.setItem('learner_id', data.profile.id); } catch {}
       }
 
       // Handle career suggestions
@@ -131,13 +92,12 @@ export default function OnboardingChat() {
       }
 
       if (data.is_complete) {
-        setTimeout(() => {
-          navigate('/roadmap');
-        }, 1500);
+        setTimeout(() => navigate('/roadmap'), 1500);
       }
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I had trouble connecting to the server." }]);
+    } catch (err) {
+      const msg = describeError(err);
+      toast.error(msg);
+      setMessages(prev => [...prev, { role: 'assistant', content: `Sorry, I had trouble: ${msg}` }]);
     } finally {
       setIsLoading(false);
     }

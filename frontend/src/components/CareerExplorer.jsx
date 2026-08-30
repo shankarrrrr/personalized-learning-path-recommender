@@ -11,15 +11,20 @@ import {
   ChevronRight,
   BookOpen,
   Target,
-  Users
+  Users,
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
+import { api, describeError } from '../lib/api';
+import { useToast } from './Toast';
+import { useNavigate } from 'react-router-dom';
 
 const CareerExplorer = ({ onCareerSelect, selectedCareer }) => {
   const [careers, setCareers] = useState([]);
   const [filteredCareers, setFilteredCareers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDomain, setSelectedDomain] = useState('');
@@ -28,30 +33,31 @@ const CareerExplorer = ({ onCareerSelect, selectedCareer }) => {
   const [minSalary, setMinSalary] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCareerDetails, setSelectedCareerDetails] = useState(null);
-  
+  const [selectingCareer, setSelectingCareer] = useState(false);
+
+  const toast = useToast();
+  const navigate = useNavigate();
+
   // Fetch careers on component mount
   useEffect(() => {
     fetchCareers();
   }, []);
-  
+
   // Apply filters when careers or filter values change
   useEffect(() => {
     applyFilters();
   }, [careers, searchTerm, selectedDomain, selectedDifficulty, maxTime, minSalary]);
-  
+
   const fetchCareers = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://127.0.0.1:8000/careers');
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      setCareers(data);
       setError(null);
+      const data = await api.get('/careers');
+      setCareers(data);
     } catch (err) {
-      setError('Failed to load career paths. Please try again.');
-      console.error('Error fetching careers:', err);
+      const msg = describeError(err);
+      setError(msg);
+      toast.error(`Could not load careers: ${msg}`);
     } finally {
       setLoading(false);
     }
@@ -131,18 +137,43 @@ const CareerExplorer = ({ onCareerSelect, selectedCareer }) => {
     setMinSalary('');
   };
   
-  const handleCareerSelect = (career) => {
+  const handleCareerSelect = async (career) => {
     if (onCareerSelect) {
       onCareerSelect(career);
     }
     setSelectedCareerDetails(career);
   };
-  
+
+  const confirmCareerSelection = async () => {
+    if (!selectedCareerDetails) return;
+    let learnerId = null;
+    try { learnerId = localStorage.getItem('learner_id'); } catch {}
+
+    setSelectingCareer(true);
+    try {
+      // Persist selection on the backend (updates profile + generates path).
+      if (learnerId) {
+        await api.post(`/careers/${encodeURIComponent(selectedCareerDetails.id)}/select`, null, {
+          query: { learner_id: learnerId },
+        });
+      }
+      toast.success(`Selected ${selectedCareerDetails.title}! Generating your learning path...`);
+      setSelectedCareerDetails(null);
+      // Give the backend a moment, then take the user to their roadmap.
+      setTimeout(() => navigate('/roadmap'), 800);
+    } catch (err) {
+      const msg = describeError(err);
+      toast.error(`Could not select career: ${msg}`);
+    } finally {
+      setSelectingCareer(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-3 text-gray-600">Loading career paths...</span>
+        <Loader2 className="animate-spin h-8 w-8 text-primary" />
+        <span className="ml-3 text-muted-foreground">Loading career paths...</span>
       </div>
     );
   }
@@ -425,10 +456,15 @@ const CareerExplorer = ({ onCareerSelect, selectedCareer }) => {
                 )}
                 
                 <button
-                  onClick={() => handleCareerSelect(selectedCareerDetails)}
-                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  onClick={confirmCareerSelection}
+                  disabled={selectingCareer}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Select This Career Path
+                  {selectingCareer ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Selecting...</>
+                  ) : (
+                    <>Select This Career Path</>
+                  )}
                 </button>
               </div>
             </div>
