@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, ForeignKey, Float, Boolean
 from sqlalchemy.orm import relationship
 import datetime
 from database import Base
@@ -31,6 +31,17 @@ class Course(Base):
     format = Column(String)
     duration = Column(String)
     embedding_vector = Column(JSON, nullable=True) # Will store list of floats if used locally
+
+    # Real-course metadata (TASK-006)
+    platform = Column(String, nullable=True)        # e.g. Coursera, Udemy, freeCodeCamp, YouTube
+    course_url = Column(String, nullable=True)      # canonical link to the course
+    instructor = Column(String, nullable=True)       # author / channel / university
+    rating = Column(Float, nullable=True)            # 0.0 - 5.0
+    rating_count = Column(Integer, nullable=True)   # number of ratings
+    price = Column(String, nullable=True)            # 'Free', '$49.99', 'Subscription', etc.
+    is_free = Column(Boolean, default=True)          # convenience boolean for filtering
+    language = Column(String, default="English")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class LearningPath(Base):
     __tablename__ = "learning_paths"

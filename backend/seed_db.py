@@ -3,84 +3,37 @@ from sqlalchemy.orm import Session
 import database, models
 from services.embedding_service import embedding_service
 from data.career_paths import CAREER_PATHS_DATA
+from data.courses import REAL_COURSES
 
 def run_seed():
-    # Drop and recreate tables to ensure fresh start with embeddings
+    # Drop and recreate tables to ensure fresh start with the new schema
+    # (the Course model now includes real-course metadata fields).
     models.Base.metadata.drop_all(bind=database.engine)
     models.Base.metadata.create_all(bind=database.engine)
     
     db = database.SessionLocal()
-    
-    courses_data = [
-        {
-            "id": "sql_basics",
-            "title": "SQL for Data Science",
-            "description": "Learn the basics of SQL, including SELECT, WHERE, and JOINs.",
-            "domain": "Data",
-            "skills_taught": ["sql_basics"],
-            "prerequisites": [],
-            "level": "Beginner",
-            "format": "Video",
-            "duration": "4 weeks"
-        },
-        {
-            "id": "python_basics",
-            "title": "Python for Everybody",
-            "description": "Fundamental programming concepts in Python.",
-            "domain": "Data",
-            "skills_taught": ["python_basics"],
-            "prerequisites": [],
-            "level": "Beginner",
-            "format": "Interactive",
-            "duration": "6 weeks"
-        },
-        {
-            "id": "pandas",
-            "title": "Data Manipulation with Pandas",
-            "description": "Learn to clean and manipulate data using Python's Pandas library.",
-            "domain": "Data",
-            "skills_taught": ["pandas"],
-            "prerequisites": ["sql_basics", "python_basics"],
-            "level": "Intermediate",
-            "format": "Project",
-            "duration": "4 weeks"
-        },
-        {
-            "id": "machine_learning",
-            "title": "Machine Learning Fundamentals",
-            "description": "Introduction to supervised and unsupervised learning algorithms.",
-            "domain": "Data",
-            "skills_taught": ["machine_learning"],
-            "prerequisites": ["pandas"],
-            "level": "Advanced",
-            "format": "Video",
-            "duration": "8 weeks"
-        }
-    ]
 
-    for i in range(1, 47):
-        courses_data.append({
-            "id": f"mock_course_{i}",
-            "title": f"Advanced Topic {i} in Data",
-            "description": f"Detailed exploration of advanced data topic {i}.",
-            "domain": "Data",
-            "skills_taught": [f"advanced_skill_{i}"],
-            "prerequisites": ["machine_learning"],
-            "level": "Advanced",
-            "format": "Reading",
-            "duration": "2 weeks"
-        })
+    print(f"Generating embeddings for {len(REAL_COURSES)} real courses... This might take a minute.")
+    seeded = 0
+    skipped = 0
+    seen_ids = set()
+    for course_data in REAL_COURSES:
+        course_id = course_data["id"]
+        if course_id in seen_ids:
+            skipped += 1
+            continue
+        seen_ids.add(course_id)
 
-    print("Generating embeddings for 50 courses... This might take a few seconds.")
-    for course_data in courses_data:
         text_to_embed = f"{course_data['title']} - {course_data['description']}"
         course_data["embedding_vector"] = embedding_service.get_embedding(text_to_embed)
         course = models.Course(**course_data)
         db.add(course)
+        seeded += 1
 
     db.commit()
-    print(f"Successfully seeded {len(courses_data)} courses with Gemini embeddings.")
-    
+    print(f"Successfully seeded {seeded} real courses with Gemini embeddings"
+          + (f" (skipped {skipped} duplicate id(s))." if skipped else "."))
+
     # Seed career paths
     print("Seeding career paths...")
     for career_data in CAREER_PATHS_DATA:
@@ -91,7 +44,7 @@ def run_seed():
     print(f"Successfully seeded {len(CAREER_PATHS_DATA)} career paths.")
     
     db.close()
-    print(f"Database seeding complete: {len(courses_data)} courses + {len(CAREER_PATHS_DATA)} career paths")
+    print(f"Database seeding complete: {seeded} courses + {len(CAREER_PATHS_DATA)} career paths")
 
 if __name__ == "__main__":
     run_seed()
