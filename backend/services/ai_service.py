@@ -1,7 +1,8 @@
 import os
 import json
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from typing import Dict, Any, List
 import models
 import database
@@ -11,14 +12,22 @@ from sqlalchemy.orm import Session
 dotenv_path = os.path.join(os.path.dirname(__file__), '../../.env')
 load_dotenv(dotenv_path)
 
+# Model identifiers (new google-genai SDK).
+# gemini-3.6-flash is the current non-deprecated chat model.
+TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.6-flash")
+
+
 class AIService:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
+        # Expose the model id as an instance attribute for easy introspection/override.
+        self.text_model = TEXT_MODEL
         if self.api_key:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-3.6-flash')
+            # New official SDK: a Client is configured with the API key once,
+            # then used for all model calls (no global genai.configure() needed).
+            self.client = genai.Client(api_key=self.api_key)
         else:
-            self.model = None
+            self.client = None
 
     def get_career_recommendations(self, user_interests: List[str], user_background: str = "") -> List[Dict[str, Any]]:
         """Get career path recommendations based on user interests and background."""
@@ -66,7 +75,7 @@ Please return ONLY a JSON array with the top 3 career recommendations in this ex
 Sort by best match (highest confidence) first.
 """
             
-            if not self.model:
+            if not self.client:
                 # Fallback recommendations if no API key
                 return [
                     {
@@ -82,14 +91,15 @@ Sort by best match (highest confidence) first.
                         "confidence": 0.7
                     }
                 ]
-            
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(
+
+            response = self.client.models.generate_content(
+                model=self.text_model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                 )
             )
-            
+
             recommendations = json.loads(response.text)
             return recommendations[:3]  # Ensure max 3 recommendations
             
@@ -106,7 +116,7 @@ Sort by best match (highest confidence) first.
             ]
     def extract_profile(self, conversation_history: list) -> Dict[str, Any]:
         """Extracts goal, domain, level etc. from chat history and suggests career paths."""
-        if not self.model:
+        if not self.client:
             # Fallback to mock logic with career suggestions
             return {
                 "message": {"role": "assistant", "content": "I see you're interested in tech! Based on what you've shared, here are some career paths that might interest you: Data Scientist, Web Developer, or DevOps Engineer. Which of these sounds most appealing, or would you like to explore other options?"},
@@ -182,9 +192,10 @@ Set is_complete to true ONLY if you have their goal, domain, current_level, and 
 Include 1-3 career suggestions in suggested_careers based on their interests.
 """
         
-        response = self.model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
+        response = self.client.models.generate_content(
+            model=self.text_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
                 response_mime_type="application/json",
             )
         )
@@ -200,11 +211,11 @@ Include 1-3 career suggestions in suggested_careers based on their interests.
 
     def explain_recommendation(self, course_title: str, user_goal: str) -> str:
         """Generate a short 1-line rationale for why a course was recommended."""
-        if not self.model:
+        if not self.client:
             return f"Recommended because it builds the foundation for your goal to {user_goal}."
         
         prompt = f"In one short sentence, explain why a course titled '{course_title}' is recommended for someone whose goal is '{user_goal}'. Talk directly to the user (e.g. 'Recommended because you...')."
-        response = self.model.generate_content(prompt)
+        response = self.client.models.generate_content(model=self.text_model, contents=prompt)
         return response.text.strip()
 
 ai_service = AIService()
