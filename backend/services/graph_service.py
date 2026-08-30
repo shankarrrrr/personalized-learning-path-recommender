@@ -9,7 +9,7 @@ class GraphService:
 
     def _load_comprehensive_skill_graph(self):
         """Load a comprehensive skill graph with realistic prerequisites."""
-        
+
         # Define all skills with their prerequisites
         skills_with_prerequisites = {
             # Programming Fundamentals
@@ -111,6 +111,7 @@ class GraphService:
             "usability_testing": ["user_research"],
             "information_architecture": [],
             "visual_design": ["adobe_creative_suite"],
+            "after_effects": ["adobe_creative_suite"],
             
             # Product Management
             "product_strategy": [],
@@ -145,8 +146,103 @@ class GraphService:
             "technical_writing": [],
             "analytics_tools": ["data_analysis"],
             "jira": ["agile_methodology"],
+
+            # ---- Supplemental skills referenced by career paths ----
+            # Fill gaps so every required/optional skill on a career path also
+            # exists as a node in the graph with sensible prerequisites.
         }
-        
+
+        # Supplemental skill definitions (kept separate then merged so the
+        # main table above stays readable). These cover skills referenced by
+        # career paths that were previously missing from the graph.
+        supplemental_skills = {
+            # Cybersecurity
+            "security": [],  # general security awareness, no hard prereq
+            "compliance": ["security"],
+            "forensics": ["network_security", "linux"],
+            "malware_analysis": ["ethical_hacking"],
+            "penetration_testing": ["ethical_hacking"],
+            "threat_intelligence": ["network_security"],
+            "python_security": ["python_basics", "network_security"],
+            "vault": ["security"],
+            "cloud_security": ["aws", "network_security"],
+            "disaster_recovery": ["system_design"],
+
+            # Data Engineering / Data
+            "hadoop": ["java"],
+            "snowflake": ["sql_advanced"],
+            "databricks": ["spark"],
+            "dbt": ["sql_advanced"],
+            "data_governance": ["data_modeling"],
+            "streaming_data": ["kafka"],
+            "feature_stores": ["machine_learning"],
+            "model_versioning": ["mlops"],
+            "python_automation": ["python_basics"],
+
+            # DevOps / Cloud / SRE
+            "docker_compose": ["docker"],
+            "containers": ["docker"],
+            "helm": ["kubernetes"],
+            "ansible": ["linux"],
+            "terraform_pro": ["terraform"],
+            "jenkins": ["ci_cd"],
+            "prometheus": ["monitoring"],
+            "grafana": ["prometheus"],
+            "observability": ["monitoring"],
+            "serverless": ["aws"],
+            "service_mesh": ["microservices"],
+            "istio": ["service_mesh", "kubernetes"],
+            "automation": ["bash_scripting"],
+            "cost_optimization": ["cloud_architecture"],
+
+            # Web / Frontend
+            "javascript_basics": ["html_css"],
+            "accessibility_design": ["responsive_design"],
+            "invision": ["wireframing"],
+            "miro": [],
+            "principle": [],  # design principles, no prereq
+
+            # Mobile
+            "flutter": ["dart"],
+            "dart": [],
+            "ionic": ["javascript"],
+            "xamarin": ["c_sharp"],
+            "c_sharp": [],
+            "react_native_navigation": ["react_native"],
+            "firebase": ["javascript"],
+            "push_notifications": ["mobile_ui_design"],
+            "app_analytics": ["mobile_ui_design"],
+            "core_ml": ["machine_learning"],
+            "ar_kit": ["swift"],
+
+            # AI / ML
+            "mlflow": ["mlops"],
+            "model_registry": ["model_versioning"],
+
+            # Product / Research
+            "user_interviews": ["user_research"],
+
+            # Blockchain / Web3
+            "layer2": ["ethereum"],
+            "polygon": ["ethereum"],
+            "hyperledger": ["blockchain_fundamentals"],
+            "ipfs": ["blockchain_fundamentals"],
+            "defi_protocols": ["smart_contracts"],
+            "dao_governance": ["smart_contracts"],
+            "nft_development": ["smart_contracts"],
+
+            # Languages (extra)
+            "golang": [],
+            "rust": [],
+            "scala": ["java"],
+            "kotlin_advanced": ["kotlin"],
+        }
+
+        # Merge supplemental definitions into the main dictionary.
+        for skill_id, prerequisites in supplemental_skills.items():
+            if skill_id not in skills_with_prerequisites:
+                skills_with_prerequisites[skill_id] = prerequisites
+
         # Add all skills as nodes
         for skill_id, prerequisites in skills_with_prerequisites.items():
             self.graph.add_node(skill_id, name=skill_id.replace('_', ' ').title())
@@ -154,6 +250,13 @@ class GraphService:
         # Add prerequisite edges
         for skill_id, prerequisites in skills_with_prerequisites.items():
             for prerequisite in prerequisites:
+                # Only add an edge if the prerequisite also exists as a node,
+                # otherwise add the missing prerequisite as a root node first.
+                if prerequisite not in self.graph:
+                    self.graph.add_node(
+                        prerequisite,
+                        name=prerequisite.replace('_', ' ').title(),
+                    )
                 self.graph.add_edge(prerequisite, skill_id)
 
     def compute_skill_gap(self, goal_skills: List[str], known_skills: List[str]) -> List[str]:
