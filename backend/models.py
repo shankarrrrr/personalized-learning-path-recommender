@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, ForeignKey, Float
 from sqlalchemy.orm import relationship
 import datetime
 from database import Base
@@ -51,3 +51,35 @@ class ProgressLog(Base):
     status = Column(String) # locked, in_progress, done, skipped
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     optional_score = Column(Integer, nullable=True)
+
+class CareerPath(Base):
+    __tablename__ = "career_paths"
+
+    id = Column(String, primary_key=True, index=True)  # e.g., "data_scientist"
+    title = Column(String, index=True)  # e.g., "Data Scientist"
+    description = Column(Text)  # Career overview and what they do
+    domain = Column(String)  # e.g., "Data Science", "Web Development"
+    
+    # Job market information
+    avg_salary_min = Column(Integer)  # Minimum salary range
+    avg_salary_max = Column(Integer)  # Maximum salary range
+    job_growth = Column(String)  # e.g., "+22% (Much faster than average)"
+    demand_level = Column(String)  # "High", "Medium", "Low"
+    
+    # Learning information  
+    required_skills = Column(JSON, default=list)  # List of skill IDs needed
+    optional_skills = Column(JSON, default=list)  # Nice-to-have skills
+    estimated_time_months = Column(Integer)  # Time to complete learning path
+    difficulty_level = Column(String)  # "Beginner", "Intermediate", "Advanced"
+    
+    # Additional metadata
+    typical_job_titles = Column(JSON, default=list)  # Related job titles
+    industries = Column(JSON, default=list)  # Industries that hire for this role
+    remote_friendly = Column(String, default="Yes")  # Remote work availability
+    
+    # Learning path information
+    learning_objectives = Column(JSON, default=list)  # What you'll learn
+    career_progression = Column(JSON, default=list)  # Career advancement path
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)

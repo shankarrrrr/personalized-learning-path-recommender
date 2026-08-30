@@ -56,3 +56,40 @@ class ProgressUpdateRequest(BaseModel):
     learner_id: int
     course_id: str
     status: str # 'done', 'skipped'
+
+class CareerPathBase(BaseModel):
+    title: str
+    description: str
+    domain: str
+    avg_salary_min: Optional[int] = None
+    avg_salary_max: Optional[int] = None
+    job_growth: Optional[str] = None
+    demand_level: Optional[str] = None
+    required_skills: List[str] = []
+    optional_skills: List[str] = []
+    estimated_time_months: Optional[int] = None
+    difficulty_level: Optional[str] = None
+    typical_job_titles: List[str] = []
+    industries: List[str] = []
+    remote_friendly: Optional[str] = "Yes"
+    learning_objectives: List[str] = []
+    career_progression: List[str] = []
+
+class CareerPathCreate(CareerPathBase):
+    id: str
+
+class CareerPath(CareerPathBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class CareerPathFilter(BaseModel):
+    domain: Optional[str] = None
+    difficulty_level: Optional[str] = None
+    min_salary: Optional[int] = None
+    max_salary: Optional[int] = None
+    max_time_months: Optional[int] = None
+    remote_friendly: Optional[bool] = None
