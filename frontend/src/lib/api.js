@@ -88,6 +88,16 @@ export async function apiRequest(path, options = {}) {
   }
 
   const finalHeaders = { ...headers };
+  // Attach JWT bearer token if present (set by the auth flow).
+  try {
+    const token = localStorage.getItem('auth_token');
+    if (token && !finalHeaders['Authorization']) {
+      finalHeaders['Authorization'] = `Bearer ${token}`;
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+
   let payload;
   if (body !== undefined && body !== null) {
     if (body instanceof FormData) {
