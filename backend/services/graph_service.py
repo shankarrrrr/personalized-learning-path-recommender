@@ -267,7 +267,10 @@ class GraphService:
         
         # Find all skills that are needed (goal skills + their prerequisites)
         needed = set()
-        
+        # Track goal skills that aren't in the graph so they still appear in the
+        # output (custom skills a career references that have no prerequisites).
+        unknown_skills = set()
+
         for skill in goal_skills:
             if skill in self.graph:
                 # Add the skill itself
@@ -277,20 +280,28 @@ class GraphService:
             else:
                 # If skill not in graph, still add it (might be a custom skill)
                 needed.add(skill)
-                
+                unknown_skills.add(skill)
+
         # Remove skills the user already knows
         known_set = set(known_skills)
         gap = needed - known_set
-        
-        # Topologically sort the subgraph of needed skills
+
+        # Topologically sort the subgraph of needed skills. subgraph() only
+        # contains nodes that exist in the graph, so unknown skills would be
+        # dropped here -- append them afterward so they still surface.
         subgraph = self.graph.subgraph(gap)
         try:
             sorted_gap = list(nx.topological_sort(subgraph))
-            return sorted_gap
         except nx.NetworkXUnfeasible:
             # Cycle detected (shouldn't happen with proper prerequisites)
             print("Warning: Cycle detected in skill graph")
-            return list(gap)
+            sorted_gap = list(gap)
+
+        # Append any unknown skills (those not in the graph) so they still
+        # appear in the learner's path.
+        unknown_remaining = gap - set(subgraph.nodes())
+        sorted_gap.extend(sorted(unknown_remaining))
+        return sorted_gap
     
     def get_skill_prerequisites(self, skill_id: str) -> List[str]:
         """Get direct prerequisites for a skill."""

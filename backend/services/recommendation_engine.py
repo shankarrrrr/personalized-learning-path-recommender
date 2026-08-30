@@ -89,7 +89,11 @@ class RecommendationEngine:
         )
         gap_ratio = len(gap) / len(required) if required else 1.0
         score = int(min(100, base + gap_ratio * 40))
-        if score >= 75:
+        # A learner who has already covered the required skills has effectively
+        # mastered the career regardless of its nominal difficulty level.
+        if coverage >= 1.0:
+            label = "Achievable"
+        elif score >= 75:
             label = "Challenging"
         elif score >= 50:
             label = "Moderate"
