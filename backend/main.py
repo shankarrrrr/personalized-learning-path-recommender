@@ -73,23 +73,62 @@ def generate_path(request: schemas.PathGenerateRequest, db: Session = Depends(ge
     profile = db.query(models.LearnerProfile).filter(models.LearnerProfile.id == request.learner_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
+    
+    goal_skills = []
+    career_context = None
+    
+    # 1. First, try to find if the user has selected a career path
+    if profile.goal:
+        # Try to find a career path that matches the user's goal
+        career = db.query(models.CareerPath).filter(
+            models.CareerPath.title.ilike(f"%{profile.goal}%")
+        ).first()
         
-    goal_skills = profile.interests if profile.interests else ["machine_learning"]
+        # If we found a matching career, use its required skills
+        if career:
+            goal_skills = career.required_skills or []
+            career_context = {
+                "career_id": career.id,
+                "career_title": career.title,
+                "estimated_time": career.estimated_time_months,
+                "difficulty": career.difficulty_level
+            }
+        else:
+            # Fallback to interests if no career found
+            goal_skills = profile.interests if profile.interests else ["machine_learning"]
+    else:
+        # If no goal set, try to use domain to find a suitable career
+        if profile.domain:
+            career = db.query(models.CareerPath).filter(models.CareerPath.domain == profile.domain).first()
+            if career:
+                goal_skills = career.required_skills or []
+                career_context = {
+                    "career_id": career.id,
+                    "career_title": career.title,
+                    "estimated_time": career.estimated_time_months,
+                    "difficulty": career.difficulty_level
+                }
+        
+        # Final fallback to interests or default
+        if not goal_skills:
+            goal_skills = profile.interests if profile.interests else ["machine_learning"]
+    
     known_skills = profile.known_skills or []
     
-    # 1. WHAT to learn
+    # 2. WHAT to learn - compute skill gap
     sorted_skills = graph_service.compute_skill_gap(goal_skills, known_skills)
     
     ordered_nodes = []
     for skill_id in sorted_skills:
-        # 2. WHICH resource to use (Vector search retrieval)
+        # 3. WHICH resource to use (Vector search retrieval)
         course = recommendation_service.retrieve_best_course(skill_id, db, profile)
         course_id = course.id if course else f"course_for_{skill_id}"
         ordered_nodes.append({
             "skill_id": skill_id,
             "course_id": course_id,
             "status": "locked",
-            "milestone_id": "m1"
+            "milestone_id": "m1",
+            "career_context": career_context  # Add career context to each node
         })
         
     if ordered_nodes:
@@ -275,11 +314,70 @@ def select_career_path(career_id: str, learner_id: int, db: Session = Depends(ge
     profile.domain = career.domain
     profile.interests = career.required_skills[:5]  # Take first 5 required skills as interests
     
+    # Also set some additional context from the career
+    if not profile.time_budget and career.estimated_time_months:
+        profile.time_budget = f"{career.estimated_time_months} months"
+    
     db.commit()
     db.refresh(profile)
+    
+    # Optionally generate a learning path right away
+    try:
+        # Generate learning path based on selected career
+        sorted_skills = graph_service.compute_skill_gap(career.required_skills, profile.known_skills or [])
+        
+        ordered_nodes = []
+        for skill_id in sorted_skills:
+            course = recommendation_service.retrieve_best_course(skill_id, db, profile)
+            course_id = course.id if course else f"course_for_{skill_id}"
+            ordered_nodes.append({
+                "skill_id": skill_id,
+                "course_id": course_id,
+                "status": "locked",
+                "milestone_id": "m1",
+                "career_context": {
+                    "career_id": career.id,
+                    "career_title": career.title,
+                    "estimated_time": career.estimated_time_months,
+                    "difficulty": career.difficulty_level
+                }
+            })
+            
+        if ordered_nodes:
+            ordered_nodes[0]["status"] = "current"
+            
+            # Check if there's already a learning path for this user
+            existing_path = db.query(models.LearningPath).filter(
+                models.LearningPath.learner_id == learner_id
+            ).order_by(models.LearningPath.id.desc()).first()
+            
+            if existing_path:
+                # Update existing path
+                existing_path.ordered_nodes = ordered_nodes
+                db.commit()
+                db.refresh(existing_path)
+                generated_path = existing_path
+            else:
+                # Create new learning path
+                learning_path = models.LearningPath(
+                    learner_id=profile.id,
+                    ordered_nodes=ordered_nodes
+                )
+                db.add(learning_path)
+                db.commit()
+                db.refresh(learning_path)
+                generated_path = learning_path
+        else:
+            generated_path = None
+            
+    except Exception as e:
+        print(f"Error generating learning path: {e}")
+        generated_path = None
     
     return {
         "message": f"Successfully selected career path: {career.title}",
         "career": career,
-        "updated_profile": profile
+        "updated_profile": profile,
+        "generated_learning_path": generated_path,
+        "skills_to_learn": len(career.required_skills) - len(set(profile.known_skills or []) & set(career.required_skills))
     }
