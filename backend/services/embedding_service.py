@@ -1,5 +1,7 @@
 import os
 import time
+from types import SimpleNamespace
+
 import numpy as np
 from google import genai
 from google.genai import types
@@ -96,24 +98,69 @@ class EmbeddingService:
         raise RuntimeError(f"Embedding generation failed after {self.max_retries} attempts: {last_err}")
 
     def build_course_index(self, db_session):
-        """Loads all courses from the DB and caches their vectors."""
+        """Load all courses from the DB and cache their vectors + snapshots.
+
+        IMPORTANT: we cache plain dict snapshots, NOT the ORM objects. ORM
+        objects are bound to the session that loaded them; once that request's
+        session closes, any later access to an expired attribute (e.g.
+        course.skills_taught) triggers a DetachedInstanceError. By snapshotting
+        the fields we need into dicts here, the cache becomes fully session-
+        independent and safe to reuse across requests.
+        """
         # Local import to avoid circular dependency
         import models
         courses = db_session.query(models.Course).all()
-        # Cache the raw course objects so downstream services (recommendation)
-        # don't re-query the DB on every skill lookup within a single path gen.
-        self._cached_courses = courses
+        snapshots = []
         count = 0
         for course in courses:
+            # Eagerly read every field downstream code touches while the
+            # session is still alive, then store a detached dict.
             if course.embedding_vector:
                 # Convert the JSON list to a fast numpy array
                 self.course_index[course.id] = np.array(course.embedding_vector)
                 count += 1
+            snapshots.append(self._snapshot_course(course))
+        self._cached_courses = snapshots
         self.is_initialized = True
         print(f"Loaded {count} course vectors into memory.")
 
-    def get_cached_courses(self, db_session):
-        """Return the cached course list, rebuilding the index if needed."""
+    @staticmethod
+    def _snapshot_course(course) -> SimpleNamespace:
+        """Return a session-independent snapshot of a Course ORM object.
+
+        Reads all attributes the recommendation/roadmap code depends on while
+        the object is still attached to its session, then returns a detached
+        SimpleNamespace. SimpleNamespace supports the same `.attr` access as
+        the ORM object, so downstream code (recommendation_service.retrieve_
+        best_course, main.py) works unchanged while the snapshot stays valid
+        across requests even after the originating session has closed.
+        """
+        return SimpleNamespace(
+            id=course.id,
+            title=course.title,
+            description=course.description,
+            domain=course.domain,
+            skills_taught=list(course.skills_taught or []),
+            prerequisites=list(course.prerequisites or []),
+            level=course.level,
+            format=course.format,
+            duration=course.duration,
+            platform=course.platform,
+            course_url=course.course_url,
+            instructor=course.instructor,
+            rating=course.rating,
+            rating_count=course.rating_count,
+            price=course.price,
+            is_free=course.is_free,
+            language=course.language,
+        )
+
+    def get_cached_courses(self, db_session) -> list:
+        """Return the cached course snapshots, rebuilding the index if needed.
+
+        Always returns plain dicts (never ORM objects), so callers can safely
+        read attributes without an active session.
+        """
         if not self.is_initialized or not self._cached_courses:
             self.build_course_index(db_session)
         return self._cached_courses

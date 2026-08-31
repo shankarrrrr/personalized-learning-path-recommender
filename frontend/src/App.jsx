@@ -18,7 +18,7 @@ function Nav() {
       <div className="max-w-6xl mx-auto flex justify-between items-center">
         <h1 className="text-xl font-bold text-primary">AI Path Recommender</h1>
         <div className="flex items-center space-x-6">
-          <Link to="/" className="flex items-center text-muted-foreground hover:text-primary transition-colors">
+          <Link to="/home" className="flex items-center text-muted-foreground hover:text-primary transition-colors">
             <MessageCircle className="w-5 h-5 mr-1" />
             <span className="hidden sm:inline">Chat</span>
           </Link>
@@ -69,7 +69,8 @@ function App() {
             <main className="flex-1 w-full max-w-6xl mx-auto p-4 md:p-8">
               <ErrorBoundary>
                 <Routes>
-                  <Route path="/" element={<OnboardingChat />} />
+                  <Route path="/" element={<AuthPage />} />
+                  <Route path="/home" element={<OnboardingChat />} />
                   <Route path="/careers" element={<CareerExplorer />} />
                   <Route path="/roadmap" element={<RoadmapView />} />
                   <Route path="/dashboard" element={<Dashboard />} />

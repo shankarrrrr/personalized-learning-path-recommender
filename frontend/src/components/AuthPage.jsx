@@ -27,7 +27,7 @@ export default function AuthPage() {
       mode === 'login'
         ? await login({ email, password })
         : await register({ email, username, password });
-    if (result.ok) navigate('/');
+    if (result.ok) navigate('/home');
   };
 
   return (
@@ -128,7 +128,7 @@ export default function AuthPage() {
         </p>
 
         <p className="text-center text-xs text-muted-foreground mt-4">
-          <Link to="/" className="hover:underline">Continue without an account</Link>
+          <Link to="/home" className="hover:underline">Continue without an account</Link>
         </p>
       </div>
     </div>
